@@ -240,6 +240,37 @@ label {
   gap: 10px;
 }
 
+.safety-list {
+  margin-bottom: 14px;
+}
+
+.safety-list:empty {
+  display: none;
+}
+
+.safety-list {
+  border: 1px solid #e6c9a2;
+  border-radius: 8px;
+  background: #fff8ed;
+  color: #573611;
+  padding: 12px;
+}
+
+.safety-list strong {
+  display: block;
+  margin-bottom: 6px;
+  font-size: 13px;
+}
+
+.safety-list ul {
+  margin: 0;
+  padding-left: 18px;
+  display: grid;
+  gap: 5px;
+  font-size: 13px;
+  line-height: 1.4;
+}
+
 .task-list.empty {
   min-height: 180px;
   align-content: center;

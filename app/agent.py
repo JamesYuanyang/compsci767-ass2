@@ -2,7 +2,7 @@ from __future__ import annotations
 
 import re
 import uuid
-from datetime import date, datetime, timezone
+from datetime import date, datetime, time, timezone
 from typing import Any
 
 from app.models import FeedbackRequest, PlanRequest
@@ -110,15 +110,29 @@ class TaskPlanningAgent:
         goal = request.goal.strip()
         domain = self._classify_domain(goal)
         deliverables = self._extract_deliverables(goal, domain)
+        input_type = self._detect_input_type(goal)
+        deadline = self._deadline_details(request.deadline, request.priority)
+        recommended_hours = self._estimate_recommended_hours(
+            goal=goal,
+            domain=domain,
+            deliverables=deliverables,
+            input_type=input_type,
+            priority=request.priority,
+            available_hours=request.available_hours,
+        )
         return {
             "raw_goal": goal,
             "keywords": self._extract_keywords(goal),
             "domain": domain,
-            "input_type": self._detect_input_type(goal),
+            "input_type": input_type,
             "deliverables": deliverables,
             "deadline_detected": bool(request.deadline),
-            "deadline_pressure": self._deadline_pressure(request.deadline, request.priority),
+            "deadline_pressure": deadline["pressure"],
+            "deadline_date": deadline["date"],
+            "deadline_days_left": deadline["days_left"],
+            "deadline_hours_remaining": deadline["hours_remaining"],
             "time_budget": request.available_hours,
+            "recommended_hours": recommended_hours,
             "urgency": request.priority,
             "complexity": self._estimate_complexity(goal, request.available_hours, deliverables),
             "constraints": self._detect_constraints(goal, request, deliverables),
@@ -167,6 +181,8 @@ class TaskPlanningAgent:
 
     def _safety_check(self, perception: dict[str, Any], actions: dict[str, Any]) -> dict[str, Any]:
         total_hours = round(sum(task["effort_hours"] for task in actions["tasks"]), 1)
+        recommended_hours = perception.get("recommended_hours", total_hours)
+        hours_remaining = perception.get("deadline_hours_remaining")
         messages = []
         warnings = []
 
@@ -178,6 +194,27 @@ class TaskPlanningAgent:
             warnings.append("Urgent deadline with a large workload.")
             messages.append("Safety: urgent deadline detected; keep only the highest-value output if time slips.")
 
+        if recommended_hours > perception["time_budget"] + 0.25:
+            warnings.append("Available hours are lower than the recommended workload.")
+            messages.append(
+                f"Safety: this looks closer to {recommended_hours:g} hours of work; increase available hours, extend the deadline, or reduce scope."
+            )
+
+        if hours_remaining is not None:
+            if hours_remaining <= 0:
+                warnings.append("The selected deadline has already passed or has no remaining time today.")
+                messages.append("Safety: choose a later deadline or switch to an emergency minimum-scope submission.")
+            elif perception["time_budget"] > hours_remaining + 0.25:
+                warnings.append("Available hours exceed the calendar time remaining before the deadline.")
+                messages.append(
+                    f"Safety: only about {hours_remaining:g} hours remain before the selected deadline; lower available hours or extend the deadline."
+                )
+            if recommended_hours > hours_remaining + 0.25:
+                warnings.append("Recommended workload does not fit before the selected deadline.")
+                messages.append(
+                    f"Safety: recommended work is about {recommended_hours:g} hours but only {hours_remaining:g} hours remain before the deadline."
+                )
+
         if total_hours > perception["time_budget"]:
             warnings.append("Estimated work exceeds available time.")
             messages.append("Safety: estimated effort is above the time budget; reduce scope or increase available hours.")
@@ -187,7 +224,13 @@ class TaskPlanningAgent:
         if len(actions["tasks"]) > 8:
             warnings.append("Plan has too many tasks for a short prototype workflow.")
 
-        return {"total_estimated_hours": total_hours, "warnings": warnings, "messages": messages}
+        return {
+            "total_estimated_hours": total_hours,
+            "recommended_hours": recommended_hours,
+            "hours_remaining_before_deadline": hours_remaining,
+            "warnings": warnings,
+            "messages": messages,
+        }
 
     def _classify_domain(self, goal: str) -> str:
         lower = goal.lower()
@@ -433,6 +476,70 @@ class TaskPlanningAgent:
             return date.fromisoformat(value.strip())
         except ValueError:
             return None
+
+    def _deadline_details(self, deadline: str | None, priority: str) -> dict[str, Any]:
+        if not deadline:
+            return {"pressure": "unknown", "date": None, "days_left": None, "hours_remaining": None}
+
+        parsed_date = self._parse_date(deadline)
+        if parsed_date:
+            now = datetime.now().astimezone()
+            end_of_deadline = datetime.combine(parsed_date, time.max).replace(tzinfo=now.tzinfo)
+            hours_remaining = max(0.0, round((end_of_deadline - now).total_seconds() / 3600, 1))
+            days_left = (parsed_date - now.date()).days
+            if hours_remaining <= 24:
+                pressure = "urgent"
+            elif hours_remaining <= 168:
+                pressure = "soon"
+            else:
+                pressure = "normal"
+            return {
+                "pressure": pressure,
+                "date": parsed_date.isoformat(),
+                "days_left": days_left,
+                "hours_remaining": hours_remaining,
+            }
+
+        return {
+            "pressure": self._deadline_pressure(deadline, priority),
+            "date": None,
+            "days_left": None,
+            "hours_remaining": None,
+        }
+
+    def _estimate_recommended_hours(
+        self,
+        goal: str,
+        domain: str,
+        deliverables: list[str],
+        input_type: str,
+        priority: str,
+        available_hours: float,
+    ) -> float:
+        base_hours = {
+            "student_assignment": 7.0,
+            "software_project": 6.0,
+            "study_plan": 5.0,
+            "research_project": 6.0,
+            "writing_project": 5.5,
+            "career_goal": 4.0,
+            "habit_goal": 3.5,
+            "event_plan": 4.5,
+            "creative_project": 5.0,
+            "general_goal": 4.0,
+        }[domain]
+        base_hours += min(3.0, len(deliverables) * 0.5)
+        if input_type == "assignment_brief":
+            base_hours += 1.5
+        if len(goal) > 1500:
+            base_hours += 1.5
+        elif len(goal) > 700:
+            base_hours += 0.8
+        if priority == "high":
+            base_hours += 0.5
+        if available_hours <= 2:
+            base_hours = max(base_hours, 4.0)
+        return round(base_hours * 2) / 2
 
     def _allocate_effort(self, time_budget: float, weights: list[int]) -> list[float]:
         total_tenths = max(5, int(round(time_budget * 10)))
