@@ -1,0 +1,78 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Personal Task Planning Agent</title>
+    <link rel="stylesheet" href="/styles.css" />
+  </head>
+  <body>
+    <main class="app-shell">
+      <section class="workspace">
+        <aside class="control-panel">
+          <div class="brand-block">
+            <p class="course">COMPSCI 767 Assignment 2</p>
+            <h1>Personal Task Planning Agent</h1>
+            <p class="student">Nanyuanyang Zhang - ID 961188227</p>
+          </div>
+
+          <form id="goal-form" class="form-grid">
+            <label>
+              Goal
+              <textarea id="goal" required minlength="5">Complete COMPSCI 767 assignment 2 with a GitHub repository, README, report, and demo video</textarea>
+            </label>
+            <label>
+              Deadline
+              <input id="deadline" type="text" value="Week 11 submission" />
+            </label>
+            <div class="two-col">
+              <label>
+                Hours
+                <input id="hours" type="number" min="0.5" max="80" step="0.5" value="8" />
+              </label>
+              <label>
+                Priority
+                <select id="priority">
+                  <option value="medium">Medium</option>
+                  <option value="high" selected>High</option>
+                  <option value="low">Low</option>
+                </select>
+              </label>
+            </div>
+            <button type="submit">Generate Plan</button>
+          </form>
+
+          <form id="feedback-form" class="form-grid">
+            <label>
+              Feedback
+              <textarea id="feedback" minlength="3" placeholder="Example: I only have 2 hours today, reduce the plan."></textarea>
+            </label>
+            <button type="submit" class="secondary">Re-plan From Feedback</button>
+          </form>
+        </aside>
+
+        <section class="output-panel">
+          <div class="summary-row" id="summary-row">
+            <article><span>Goal State</span><strong id="goal-state">No active plan</strong></article>
+            <article><span>Time Budget</span><strong id="time-budget">-</strong></article>
+            <article><span>Safety</span><strong id="safety-state">-</strong></article>
+          </div>
+
+          <div class="content-grid">
+            <section class="panel task-panel">
+              <div class="panel-title"><h2>Plan</h2><span id="session-id">No session</span></div>
+              <div id="task-list" class="task-list empty">Generate a plan to start.</div>
+            </section>
+            <section class="panel"><div class="panel-title"><h2>Agent Reasoning</h2></div><ol id="agent-log" class="log-list"></ol></section>
+            <section class="panel"><div class="panel-title"><h2>Perception</h2></div><dl id="perception" class="facts"></dl></section>
+            <section class="panel">
+              <div class="panel-title"><h2>Memory</h2><button id="refresh-memory" class="icon-button" type="button" title="Refresh memory">R</button></div>
+              <div id="memory-list" class="memory-list"></div>
+            </section>
+          </div>
+        </section>
+      </section>
+    </main>
+    <script src="/app.js"></script>
+  </body>
+</html>
