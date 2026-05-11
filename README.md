@@ -1,24 +1,105 @@
-# COMPSCI 767 Assignment 2: Intelligent Software Agent
+# COMPSCI 767 Assignment 2: Personal Task Planning Agent
 
-This repository contains a prototype intelligent software agent for COMPSCI 767 Assignment 2.
+Student: Nanyuanyang Zhang  
+Student ID: 961188227
+
+GitHub repository: https://github.com/JamesYuanyang/compsci767-ass2
+
+This repository contains a prototype intelligent software agent that helps a student turn a goal into an actionable task plan. The agent perceives the user's goal, deadline, time budget, and feedback; decides how to decompose and prioritize the work; acts by creating or updating a plan; stores sessions in memory; and applies safety checks to warn about missing deadlines or unrealistic time budgets.
 
 ## Project Status
 
-Initial repository scaffold. The agent design and implementation will be added in later checkpoints.
+Working prototype.
 
-## Planned Deliverables
+## Agent Capabilities
 
-- Intelligent software agent prototype
-- 2-page report
-- System design diagram
-- Screenshots showing how the system works
-- 2-minute demo video link
-- Reproduction instructions
+- Perception: parses the user's goal, deadline, available hours, urgency, keywords, and constraints.
+- Decision-making: selects a planning template and assigns task order, priority, effort estimates, and schedule labels.
+- Actions: creates a plan, updates task status, and replans from user feedback.
+- Memory: stores previous planning sessions and feedback in `data/memory.json`.
+- Safety mechanisms: warns when deadlines are missing, time estimates exceed the available budget, or the plan becomes too large.
+- APIs: exposes the agent through FastAPI endpoints.
+- Code execution: runs the agent logic locally as Python code.
+- LLM support: optional. The submitted prototype is rule-based so it can be reproduced without paid API keys.
 
 ## Reproduction Instructions
 
-Instructions will be updated after the prototype is implemented.
+### 1. Clone the repository
+
+```bash
+git clone https://github.com/JamesYuanyang/compsci767-ass2.git
+cd compsci767-ass2
+```
+
+### 2. Create and activate a Python virtual environment
+
+Windows PowerShell:
+
+```powershell
+python -m venv .venv
+.\.venv\Scripts\Activate.ps1
+```
+
+macOS/Linux:
+
+```bash
+python -m venv .venv
+source .venv/bin/activate
+```
+
+### 3. Install dependencies
+
+```bash
+pip install -r requirements.txt
+```
+
+### 4. Run the application
+
+```bash
+uvicorn app.main:app --reload
+```
+
+Open the app in a browser:
+
+```text
+http://127.0.0.1:8000
+```
+
+### 5. Try the agent
+
+1. Enter a personal or study goal.
+2. Add a deadline, available hours, and priority.
+3. Click `Generate Plan`.
+4. Change task statuses using `Todo`, `Doing`, `Done`, or `Blocked`.
+5. Add feedback such as `I only have 2 hours today` and click `Re-plan From Feedback`.
+6. Check the `Memory` panel to reload previous sessions.
+
+## API Endpoints
+
+- `POST /api/plan`: creates a new plan.
+- `POST /api/feedback`: updates a plan from user feedback.
+- `PATCH /api/sessions/{session_id}/tasks/{task_id}`: updates a task status.
+- `GET /api/memory`: returns stored planning sessions.
+
+## System Design
+
+```text
+User Interface
+   |
+   v
+FastAPI Routes
+   |
+   v
+TaskPlanningAgent
+   |-- Perception Module
+   |-- Decision Module
+   |-- Action Module
+   |-- Safety Check Module
+   |
+   v
+JSON Memory Store
+```
 
 ## Demo Video
 
-Demo video link will be added before final submission.
+The 2-minute demo video will be uploaded to this GitHub repository before submission.
