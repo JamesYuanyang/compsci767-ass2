@@ -17,6 +17,8 @@ Working prototype.
 - English interface: keeps the main workflow readable and consistent.
 - Assignment brief input: users can paste teacher-provided requirements or type their own goal description.
 - Date deadline picker: accepts a calendar date and uses it to estimate deadline pressure.
+- Optional local LLM analysis: can use Ollama with `llama3.2:1b` to extract tasks, methods, sections, and risks from pasted briefs.
+- Rule-based fallback: if Ollama is unavailable, the app still runs and uses deterministic planning rules.
 - Decision-making: selects a planning template and assigns task order, priority, effort estimates, and schedule labels.
 - Actions: creates a plan, updates task status, and replans from user feedback.
 - Memory: stores previous planning sessions and feedback in `data/memory.json`.
@@ -67,6 +69,27 @@ Open the app in a browser:
 ```text
 http://127.0.0.1:8000
 ```
+
+### Optional: enable local Ollama analysis
+
+The repository does not include model files. To reproduce the local LLM setup:
+
+```powershell
+# Example Windows layout used during development
+$env:OLLAMA_MODELS="D:\Ollama\Models"
+D:\Ollama\App\ollama.exe serve
+D:\Ollama\App\ollama.exe pull llama3.2:1b
+```
+
+Then run the app with:
+
+```text
+LLM_PROVIDER=ollama
+OLLAMA_BASE_URL=http://127.0.0.1:11434
+LLM_MODEL=llama3.2:1b
+```
+
+If Ollama is not running, the application automatically falls back to its rule-based planner.
 
 ### 5. Try the agent
 

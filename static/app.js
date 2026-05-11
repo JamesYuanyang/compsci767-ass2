@@ -186,11 +186,14 @@ function renderLog(log) {
 function renderPerception(perception) {
   const facts = document.querySelector("#perception");
   const deliverables = perception.deliverables ? perception.deliverables.join(", ") : "None";
+  const methods = perception.methods ? perception.methods.join(", ") : "None";
   facts.innerHTML = [
     ["Input", perception.input_type || "goal_description"],
+    ["Source", perception.analysis_source || "rules"],
     ["Domain", perception.domain],
     ["Keywords", perception.keywords.join(", ") || "None"],
     ["Deliverables", deliverables],
+    ["Methods", methods],
     ["Deadline pressure", perception.deadline_pressure || (perception.deadline_detected ? "Detected" : "Missing")],
     ["Hours remaining", formatOptionalHours(perception.deadline_hours_remaining)],
     ["Available time", `${formatHours(perception.time_budget)}`],

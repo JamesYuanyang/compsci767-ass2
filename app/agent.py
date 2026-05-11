@@ -5,15 +5,20 @@ import uuid
 from datetime import date, datetime, time, timezone
 from typing import Any
 
+from app.llm import OllamaBriefAnalyzer
 from app.models import FeedbackRequest, PlanRequest
 
 
 class TaskPlanningAgent:
     """Rule-based planning agent with perception, decision, action, memory, and safety outputs."""
 
+    def __init__(self, analyzer: OllamaBriefAnalyzer | None = None) -> None:
+        self.analyzer = analyzer or OllamaBriefAnalyzer()
+
     def create_plan(self, request: PlanRequest) -> dict[str, Any]:
-        perception = self._perceive(request)
-        decisions = self._decide(perception)
+        llm_analysis = self.analyzer.analyze(request.goal)
+        perception = self._perceive(request, llm_analysis)
+        decisions = self._decide(perception, llm_analysis)
         actions = self._act(perception, decisions)
         safety = self._safety_check(perception, actions)
 
@@ -29,6 +34,7 @@ class TaskPlanningAgent:
             "tasks": actions["tasks"],
             "agent_log": actions["agent_log"] + safety["messages"],
             "safety": safety,
+            "llm_analysis": llm_analysis,
             "feedback_history": [],
         }
 
@@ -50,24 +56,24 @@ class TaskPlanningAgent:
                 constraints.append("Very limited time budget")
             agent_log.append(f"Perception: detected a revised time budget of {updated_budget:g} hours.")
 
-        if any(term in lower for term in ["less time", "busy", "only", "reduce", "shorter", "too much", "太多", "没时间", "少一点"]):
+        if any(term in lower for term in ["less time", "busy", "only", "reduce", "shorter", "too much"]):
             self._fit_remaining_effort(tasks, session["perception"]["time_budget"])
             agent_log.append("Action: compressed remaining tasks to fit the revised time budget.")
 
-        if any(term in lower for term in ["hard", "confusing", "stuck", "blocked", "unclear", "卡住", "不会", "不清楚"]):
+        if any(term in lower for term in ["hard", "confusing", "stuck", "blocked", "unclear"]):
             for task in tasks:
                 if task["status"] == "todo":
                     task["priority_score"] += 1
                     task["support_hint"] = "Turn this into one 25-minute attempt, then write the exact question or blocker."
             agent_log.append("Action: raised unresolved task priority and added blocker-focused hints.")
 
-        if any(term in lower for term in ["specific", "detail", "too generic", "具体", "细化", "详细"]):
+        if any(term in lower for term in ["specific", "detail", "too generic"]):
             for task in tasks:
                 if task["status"] == "todo":
                     task["support_hint"] = "Define one visible output for this task before starting, then stop when that output exists."
             agent_log.append("Action: made the remaining task hints more concrete.")
 
-        if any(term in lower for term in ["tomorrow", "later", "delay", "extend", "明天", "延后", "推迟"]):
+        if any(term in lower for term in ["tomorrow", "later", "delay", "extend"]):
             for task in tasks:
                 if task["status"] == "todo":
                     task["schedule"] = "Later slot"
@@ -106,26 +112,47 @@ class TaskPlanningAgent:
                 return session
         raise KeyError(f"Unknown task_id: {task_id}")
 
-    def _perceive(self, request: PlanRequest) -> dict[str, Any]:
+    def _perceive(self, request: PlanRequest, llm_analysis: dict[str, Any] | None = None) -> dict[str, Any]:
         goal = request.goal.strip()
-        domain = self._classify_domain(goal)
-        deliverables = self._extract_deliverables(goal, domain)
-        input_type = self._detect_input_type(goal)
+        rule_domain = self._classify_domain(goal)
+        llm_domain = llm_analysis.get("domain") if llm_analysis else None
+        domain = rule_domain if rule_domain == "data_analysis_assignment" else llm_domain or rule_domain
+        deliverables = self._merge_lists(
+            llm_analysis.get("deliverables", []) if llm_analysis else [],
+            self._extract_deliverables(goal, domain),
+        )
+        methods = self._merge_lists(
+            llm_analysis.get("methods", []) if llm_analysis else [],
+            self._extract_methods(goal),
+        )
+        sections = self._merge_lists(
+            llm_analysis.get("sections", []) if llm_analysis else [],
+            self._extract_sections(goal),
+        )
+        input_type = (llm_analysis or {}).get("input_type") or self._detect_input_type(goal)
         deadline = self._deadline_details(request.deadline, request.priority)
-        recommended_hours = self._estimate_recommended_hours(
+        llm_recommended_hours = (llm_analysis or {}).get("recommended_hours") or 0
+        recommended_hours = max(
+            float(llm_recommended_hours),
+            self._estimate_recommended_hours(
             goal=goal,
             domain=domain,
             deliverables=deliverables,
+            methods=methods,
             input_type=input_type,
             priority=request.priority,
             available_hours=request.available_hours,
+            )
         )
         return {
             "raw_goal": goal,
             "keywords": self._extract_keywords(goal),
             "domain": domain,
             "input_type": input_type,
+            "analysis_source": (llm_analysis or {}).get("source", "rules"),
             "deliverables": deliverables,
+            "methods": methods,
+            "sections": sections,
             "deadline_detected": bool(request.deadline),
             "deadline_pressure": deadline["pressure"],
             "deadline_date": deadline["date"],
@@ -138,8 +165,8 @@ class TaskPlanningAgent:
             "constraints": self._detect_constraints(goal, request, deliverables),
         }
 
-    def _decide(self, perception: dict[str, Any]) -> dict[str, Any]:
-        steps = self._build_steps(perception)
+    def _decide(self, perception: dict[str, Any], llm_analysis: dict[str, Any] | None = None) -> dict[str, Any]:
+        steps = self._build_steps(perception, llm_analysis)
         efforts = self._allocate_effort(perception["time_budget"], [step["weight"] for step in steps])
         urgency_weight = {"low": 1, "medium": 2, "high": 3}[perception["urgency"]]
         return {
@@ -234,32 +261,41 @@ class TaskPlanningAgent:
 
     def _classify_domain(self, goal: str) -> str:
         lower = goal.lower()
-        if self._looks_like_assignment_brief(lower) or self._has_any(lower, ["assignment", "coursework", "course", "homework", "rubric", "submit", "submission", "criteria", "marks", "compsci", "ass2", "作业", "课程", "提交", "评分", "要求"]):
+        if self._looks_like_data_analysis_assignment(lower):
+            return "data_analysis_assignment"
+        if self._looks_like_assignment_brief(lower) or self._has_any(lower, ["assignment", "coursework", "course", "homework", "rubric", "submit", "submission", "criteria", "marks", "compsci", "ass2"]):
             return "student_assignment"
-        if self._has_any(lower, ["app", "website", "api", "code", "debug", "prototype", "software", "网站", "应用", "程序", "编程", "调试"]):
+        if self._has_any(lower, ["app", "website", "api", "code", "debug", "prototype", "software"]):
             return "software_project"
-        if self._has_any(lower, ["research", "literature", "dataset", "experiment", "survey", "reading report", "研究", "文献", "数据", "实验", "阅读报告"]):
+        if self._has_any(lower, ["research", "literature", "dataset", "experiment", "survey", "reading report"]):
             return "research_project"
-        if self._has_any(lower, ["essay", "paper", "article", "proposal", "write", "report", "论文", "写作", "文章", "提案", "报告"]):
+        if self._has_any(lower, ["essay", "paper", "article", "proposal", "write", "report"]):
             return "writing_project"
-        if self._has_any(lower, ["exam", "quiz", "study", "revise", "revision", "test", "考试", "复习", "学习", "测验"]):
+        if self._has_any(lower, ["exam", "quiz", "study", "revise", "revision", "test"]):
             return "study_plan"
-        if self._has_any(lower, ["resume", "cv", "interview", "job", "internship", "portfolio", "简历", "面试", "求职", "实习"]):
+        if self._has_any(lower, ["resume", "cv", "interview", "job", "internship", "portfolio"]):
             return "career_goal"
-        if self._has_any(lower, ["workout", "fitness", "diet", "habit", "sleep", "健身", "运动", "减肥", "习惯", "睡眠"]):
+        if self._has_any(lower, ["workout", "fitness", "diet", "habit", "sleep"]):
             return "habit_goal"
-        if self._has_any(lower, ["event", "trip", "travel", "meeting", "presentation", "活动", "旅行", "会议", "演讲"]):
+        if self._has_any(lower, ["event", "trip", "travel", "meeting", "presentation"]):
             return "event_plan"
-        if self._has_any(lower, ["video", "design", "podcast", "art", "demo", "视频", "设计", "作品", "演示"]):
+        if self._has_any(lower, ["video", "design", "podcast", "art", "demo"]):
             return "creative_project"
         return "general_goal"
 
-    def _build_steps(self, perception: dict[str, Any]) -> list[dict[str, Any]]:
+    def _build_steps(self, perception: dict[str, Any], llm_analysis: dict[str, Any] | None = None) -> list[dict[str, Any]]:
         focus = self._goal_focus(perception["raw_goal"])
         deliverables = perception["deliverables"]
         final_output = ", ".join(deliverables) if deliverables else "the final output"
         if perception.get("input_type") == "assignment_brief":
             focus = "copied assignment requirements"
+
+        if perception["domain"] == "data_analysis_assignment":
+            return self._data_analysis_steps(perception)
+
+        llm_steps = self._llm_steps(llm_analysis)
+        if llm_steps:
+            return llm_steps
 
         if perception["time_budget"] <= 2:
             return [
@@ -332,6 +368,79 @@ class TaskPlanningAgent:
             steps = steps[: max_steps - 1] + [steps[-1]]
         return steps
 
+    def _llm_steps(self, llm_analysis: dict[str, Any] | None) -> list[dict[str, Any]]:
+        if not llm_analysis:
+            return []
+        steps = []
+        for item in llm_analysis.get("tasks", []):
+            if not isinstance(item, dict):
+                continue
+            title = str(item.get("title", "")).strip()
+            hint = str(item.get("hint", "")).strip()
+            if not title:
+                continue
+            steps.append(
+                self._step(
+                    title,
+                    hint or "Complete the smallest useful version first.",
+                    self._safe_int(item.get("weight", 2), 1, 5),
+                    self._safe_int(item.get("risk", 3), 1, 5),
+                )
+            )
+        return steps if len(steps) >= 3 else []
+
+    def _data_analysis_steps(self, perception: dict[str, Any]) -> list[dict[str, Any]]:
+        return [
+            self._step(
+                "Inspect both datasets and map columns to assignment questions",
+                "Identify the Social Housing and Emergency Housing Grants columns, categories, months, missing values, and units before computing results.",
+                2,
+                4,
+            ),
+            self._step(
+                "Compute Social Housing descriptive statistics by category",
+                "For assessed bedrooms, ethnicity, and age categories, calculate mean, median, and standard deviation of application counts.",
+                3,
+                4,
+            ),
+            self._step(
+                "Model EHG grants by household type",
+                "Fit the required regression models, report each equation and R2, and document how the categorical household-type variable is encoded or grouped.",
+                4,
+                5,
+            ),
+            self._step(
+                "Calculate MAE and RMSE for each EHG model",
+                "Use Number of EHGs granted as y, compare predictions with observed values, and prepare a compact metrics table.",
+                3,
+                4,
+            ),
+            self._step(
+                "Interpret EHG success patterns across household types",
+                "Compare model fit and grant patterns, then discuss which household types appear more or less successful and what the limits of the data are.",
+                2,
+                4,
+            ),
+            self._step(
+                "Run normality checks and ethnic-group mean comparisons",
+                "Check 18 monthly application counts by ethnicity, compare Maori and Asian means with European, then run an all-group test such as ANOVA or a non-parametric alternative.",
+                4,
+                5,
+            ),
+            self._step(
+                "Build Part B conceptual model and external-data plan",
+                "Hypothesize factors affecting EHG grant success, add two plausible external data series, and specify source, geography, and collection frequency.",
+                3,
+                4,
+            ),
+            self._step(
+                "Assemble final report with tables, findings, and limitations",
+                "Use tables for statistics and model metrics, explain test choices, answer each sub-question directly, and flag ambiguous assumptions.",
+                3,
+                5,
+            ),
+        ]
+
     def _detect_constraints(self, goal: str, request: PlanRequest, deliverables: list[str]) -> list[str]:
         lower = goal.lower()
         constraints = []
@@ -341,13 +450,17 @@ class TaskPlanningAgent:
             constraints.append("Missing explicit deadline")
         if self._detect_input_type(goal) == "assignment_brief":
             constraints.append("Copied assignment brief detected")
+        if self._looks_like_data_analysis_assignment(lower):
+            constraints.append("Data analysis methods must match the assignment wording")
+        if "household type" in lower and "regression" in lower:
+            constraints.append("Household type is categorical, so regression needs encoding or a grouped-model assumption")
         if self._has_any(lower, ["github", "repository", "repo"]):
             constraints.append("Repository evidence required")
         if any(item in deliverables for item in ["report", "paper", "essay", "proposal"]):
             constraints.append("Written explanation required")
         if any(item in deliverables for item in ["demo video", "presentation", "slides"]):
             constraints.append("Presentation or demo evidence required")
-        if self._has_any(lower, ["hard", "confusing", "stuck", "blocked", "unclear", "不会", "卡住"]):
+        if self._has_any(lower, ["hard", "confusing", "stuck", "blocked", "unclear"]):
             constraints.append("Blocker or uncertainty mentioned")
         return constraints
 
@@ -396,12 +509,6 @@ class TaskPlanningAgent:
             (".ipynb", "notebook"),
             (".pdf", "PDF"),
             (".zip", "ZIP submission"),
-            ("报告", "report"),
-            ("论文", "paper"),
-            ("演示", "demo"),
-            ("视频", "video"),
-            ("简历", "resume"),
-            ("作品集", "portfolio"),
         ]
         deliverables = []
         for marker, name in markers:
@@ -411,6 +518,7 @@ class TaskPlanningAgent:
             deliverables.remove("repository")
         if not deliverables:
             defaults = {
+                "data_analysis_assignment": ["analysis report"],
                 "software_project": ["working prototype"],
                 "study_plan": ["practice results"],
                 "research_project": ["research summary"],
@@ -447,9 +555,9 @@ class TaskPlanningAgent:
             if days_left <= 7:
                 return "soon"
             return "normal"
-        if self._has_any(lower, ["today", "tonight", "asap", "urgent", "今天", "今晚", "马上"]):
+        if self._has_any(lower, ["today", "tonight", "asap", "urgent"]):
             return "urgent"
-        if self._has_any(lower, ["tomorrow", "this week", "week 11", "明天", "本周"]):
+        if self._has_any(lower, ["tomorrow", "this week", "week 11"]):
             return "soon"
         if priority == "high":
             return "soon"
@@ -467,9 +575,57 @@ class TaskPlanningAgent:
         signals = [
             "assignment", "coursework", "rubric", "submission", "submit", "deliverable",
             "marking", "criteria", "marks", "grade", "deadline", "late penalty",
-            "requirements", "learning outcome", "作业", "要求", "提交", "评分", "截止",
+            "requirements", "learning outcome",
         ]
         return sum(1 for signal in signals if signal in lower_goal) >= 2
+
+    def _looks_like_data_analysis_assignment(self, lower_goal: str) -> bool:
+        signals = [
+            "dataset", "mean", "median", "standard deviation", "linear regression",
+            "regression equation", "r2", "r squared", "mae", "rmse", "normality",
+            "anova", "kruskal", "t-test", "statistically significant", "social housing",
+            "emergency housing", "ehg", "household type", "ethnic groups",
+            "conceptual model", "external data", "collection strategy",
+        ]
+        return sum(1 for signal in signals if signal in lower_goal) >= 3
+
+    def _extract_methods(self, goal: str) -> list[str]:
+        lower = goal.lower()
+        markers = [
+            ("mean", "mean"),
+            ("median", "median"),
+            ("standard deviation", "standard deviation"),
+            ("linear regression", "linear regression"),
+            ("regression equation", "regression equation"),
+            ("r2", "R2"),
+            ("r squared", "R2"),
+            ("mae", "MAE"),
+            ("rmse", "RMSE"),
+            ("normality", "normality check"),
+            ("shapiro", "normality check"),
+            ("t-test", "pairwise mean comparison"),
+            ("anova", "ANOVA"),
+            ("kruskal", "Kruskal-Wallis"),
+            ("conceptual model", "conceptual model"),
+            ("hypothesis", "hypothesis building"),
+            ("external data", "external data inputs"),
+            ("collection strategy", "data collection strategy"),
+        ]
+        methods = []
+        for marker, label in markers:
+            if marker in lower and label not in methods:
+                methods.append(label)
+        return methods
+
+    def _extract_sections(self, goal: str) -> list[str]:
+        sections = []
+        for line in goal.splitlines():
+            cleaned = line.strip()
+            if re.match(r"^part\s+[a-z]\b", cleaned, flags=re.IGNORECASE):
+                sections.append(cleaned[:120])
+            elif re.match(r"^\(?[a-c]\)", cleaned, flags=re.IGNORECASE):
+                sections.append(cleaned[:120])
+        return sections[:10]
 
     def _parse_date(self, value: str) -> date | None:
         try:
@@ -512,11 +668,13 @@ class TaskPlanningAgent:
         goal: str,
         domain: str,
         deliverables: list[str],
+        methods: list[str],
         input_type: str,
         priority: str,
         available_hours: float,
     ) -> float:
         base_hours = {
+            "data_analysis_assignment": 16.0,
             "student_assignment": 7.0,
             "software_project": 6.0,
             "study_plan": 5.0,
@@ -529,6 +687,9 @@ class TaskPlanningAgent:
             "general_goal": 4.0,
         }[domain]
         base_hours += min(3.0, len(deliverables) * 0.5)
+        if domain == "data_analysis_assignment":
+            base_hours += min(8.0, len(methods) * 0.8)
+            base_hours = max(base_hours, 18.0)
         if input_type == "assignment_brief":
             base_hours += 1.5
         if len(goal) > 1500:
@@ -562,7 +723,6 @@ class TaskPlanningAgent:
         patterns = [
             r"(?:only|have|budget|available|left)\D{0,20}(\d+(?:\.\d+)?)\s*(?:h|hr|hrs|hour|hours)",
             r"(\d+(?:\.\d+)?)\s*(?:h|hr|hrs|hour|hours)\D{0,20}(?:left|available|today)",
-            r"(?:只有|剩下|还有)\D{0,8}(\d+(?:\.\d+)?)\s*(?:小时|个小时)",
         ]
         for pattern in patterns:
             match = re.search(pattern, feedback)
@@ -573,10 +733,8 @@ class TaskPlanningAgent:
     def _extract_requested_addition(self, feedback: str) -> str | None:
         match = re.search(r"(?:add|include|also need|also add)\s+(.{4,80})", feedback, re.IGNORECASE)
         if not match:
-            match = re.search(r"(?:加入|添加|还需要)(.{2,40})", feedback)
-        if not match:
             return None
-        addition = match.group(1).strip(" .。")
+        addition = match.group(1).strip(" .")
         if not addition:
             return None
         return addition[:80]
@@ -631,6 +789,21 @@ class TaskPlanningAgent:
 
     def _has_any(self, text: str, terms: list[str]) -> bool:
         return any(term in text for term in terms)
+
+    def _merge_lists(self, first: list[Any], second: list[Any]) -> list[str]:
+        merged = []
+        for item in [*first, *second]:
+            text = str(item).strip()
+            if text and text not in merged:
+                merged.append(text)
+        return merged[:12]
+
+    def _safe_int(self, value: Any, lower: int, upper: int) -> int:
+        try:
+            number = int(value)
+        except (TypeError, ValueError):
+            number = lower
+        return max(lower, min(upper, number))
 
     def _contains_marker(self, text: str, marker: str) -> bool:
         if re.fullmatch(r"[a-z0-9 ]+", marker):
