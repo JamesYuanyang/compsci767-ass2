@@ -193,7 +193,7 @@ function renderPerception(perception) {
     ["Domain", perception.domain],
     ["Keywords", perception.keywords.join(", ") || "None"],
     ["Deliverables", deliverables],
-    ["Methods", methods],
+    ["Key requirements", methods],
     ["Deadline pressure", perception.deadline_pressure || (perception.deadline_detected ? "Detected" : "Missing")],
     ["Hours remaining", formatOptionalHours(perception.deadline_hours_remaining)],
     ["Available time", `${formatHours(perception.time_budget)}`],

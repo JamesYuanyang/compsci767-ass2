@@ -116,7 +116,9 @@ class TaskPlanningAgent:
         goal = request.goal.strip()
         rule_domain = self._classify_domain(goal)
         llm_domain = llm_analysis.get("domain") if llm_analysis else None
-        domain = rule_domain if rule_domain == "data_analysis_assignment" else llm_domain or rule_domain
+        domain = llm_domain or rule_domain
+        if rule_domain == "student_assignment" and domain == "general_goal":
+            domain = rule_domain
         deliverables = self._merge_lists(
             llm_analysis.get("deliverables", []) if llm_analysis else [],
             self._extract_deliverables(goal, domain),
@@ -126,8 +128,8 @@ class TaskPlanningAgent:
             self._extract_methods(goal),
         )
         sections = self._merge_lists(
-            llm_analysis.get("sections", []) if llm_analysis else [],
             self._extract_sections(goal),
+            llm_analysis.get("sections", []) if llm_analysis else [],
         )
         input_type = (llm_analysis or {}).get("input_type") or self._detect_input_type(goal)
         deadline = self._deadline_details(request.deadline, request.priority)
@@ -261,8 +263,6 @@ class TaskPlanningAgent:
 
     def _classify_domain(self, goal: str) -> str:
         lower = goal.lower()
-        if self._looks_like_data_analysis_assignment(lower):
-            return "data_analysis_assignment"
         if self._looks_like_assignment_brief(lower) or self._has_any(lower, ["assignment", "coursework", "course", "homework", "rubric", "submit", "submission", "criteria", "marks", "compsci", "ass2"]):
             return "student_assignment"
         if self._has_any(lower, ["app", "website", "api", "code", "debug", "prototype", "software"]):
@@ -290,10 +290,10 @@ class TaskPlanningAgent:
         if perception.get("input_type") == "assignment_brief":
             focus = "copied assignment requirements"
 
-        if perception["domain"] == "data_analysis_assignment":
-            return self._data_analysis_steps(perception)
+        if perception.get("input_type") == "assignment_brief":
+            return self._assignment_brief_steps(perception, llm_analysis)
 
-        llm_steps = self._llm_steps(llm_analysis)
+        llm_steps = self._llm_steps(llm_analysis, perception["raw_goal"])
         if llm_steps:
             return llm_steps
 
@@ -305,11 +305,7 @@ class TaskPlanningAgent:
             ]
 
         middle_steps = {
-            "student_assignment": [
-                self._step("Extract deliverables, rubric items, and submission rules", "Turn the copied brief into a checklist of required files, marks, and evidence.", 2, 4),
-                self._step("Build the core submission artifact", "Finish the smallest version that demonstrates the required agent behaviour.", 4, 5),
-                self._step("Prepare report, README, and demo evidence", "Make reproduction steps and screenshots/video easy for a marker to verify.", 3, 4),
-            ],
+            "student_assignment": self._assignment_middle_steps(perception),
             "software_project": [
                 self._step("Define the smallest working user path", "Name the one workflow that must work end to end before adding extras.", 2, 4),
                 self._step("Implement the core workflow", "Build the critical path first and leave optional polish until it works.", 4, 5),
@@ -368,16 +364,91 @@ class TaskPlanningAgent:
             steps = steps[: max_steps - 1] + [steps[-1]]
         return steps
 
-    def _llm_steps(self, llm_analysis: dict[str, Any] | None) -> list[dict[str, Any]]:
+    def _assignment_brief_steps(
+        self, perception: dict[str, Any], llm_analysis: dict[str, Any] | None
+    ) -> list[dict[str, Any]]:
+        sections = perception.get("sections", [])
+        deliverables = perception.get("deliverables", [])
+        final_output = ", ".join(deliverables) if deliverables else "submission package"
+        steps = [
+            self._step(
+                "Convert the brief into a checklist",
+                "List each required part, question, deliverable, word limit, mark value, and submission rule before starting.",
+                2,
+                4,
+            )
+        ]
+
+        for section in sections[:5]:
+            steps.append(
+                self._step(
+                    f"Complete {section}",
+                    "Answer every sub-requirement in this section and keep notes on assumptions, evidence, and unfinished details.",
+                    3,
+                    4,
+                )
+            )
+
+        if len(steps) == 1:
+            llm_steps = self._llm_steps(llm_analysis, perception["raw_goal"])
+            if llm_steps:
+                steps.extend(llm_steps[:5])
+            else:
+                steps.extend(self._assignment_middle_steps(perception))
+
+        steps.extend(
+            [
+                self._step(
+                    "Draft the final responses in submission order",
+                    "Put answers under the same headings as the brief so every requirement is easy to mark.",
+                    3,
+                    4,
+                ),
+                self._step(
+                    f"Review and package {final_output}",
+                    "Check every checklist item, fix gaps, confirm formatting, and prepare the final upload.",
+                    2,
+                    5,
+                ),
+            ]
+        )
+        return steps[:8]
+
+    def _assignment_middle_steps(self, perception: dict[str, Any]) -> list[dict[str, Any]]:
+        return [
+            self._step(
+                "Complete the main assignment work",
+                "Work through the brief section by section, producing the required answers, analysis, artefacts, or evidence.",
+                4,
+                5,
+            ),
+            self._step(
+                "Prepare supporting evidence and final write-up",
+                "Convert working notes into clear final responses and attach any required files, tables, figures, or appendices.",
+                3,
+                4,
+            ),
+            self._step(
+                "Check against the marking criteria",
+                "Compare the final work with the rubric or marks allocation and fix the highest-value missing items first.",
+                2,
+                5,
+            ),
+        ]
+
+    def _llm_steps(self, llm_analysis: dict[str, Any] | None, brief: str = "") -> list[dict[str, Any]]:
         if not llm_analysis:
             return []
         steps = []
+        brief_words = set(re.findall(r"[a-zA-Z][a-zA-Z0-9-]{3,}", brief.lower()))
         for item in llm_analysis.get("tasks", []):
             if not isinstance(item, dict):
                 continue
             title = str(item.get("title", "")).strip()
             hint = str(item.get("hint", "")).strip()
             if not title:
+                continue
+            if brief_words and not self._task_overlaps_brief(title, brief_words):
                 continue
             steps.append(
                 self._step(
@@ -389,58 +460,6 @@ class TaskPlanningAgent:
             )
         return steps if len(steps) >= 3 else []
 
-    def _data_analysis_steps(self, perception: dict[str, Any]) -> list[dict[str, Any]]:
-        return [
-            self._step(
-                "Inspect both datasets and map columns to assignment questions",
-                "Identify the Social Housing and Emergency Housing Grants columns, categories, months, missing values, and units before computing results.",
-                2,
-                4,
-            ),
-            self._step(
-                "Compute Social Housing descriptive statistics by category",
-                "For assessed bedrooms, ethnicity, and age categories, calculate mean, median, and standard deviation of application counts.",
-                3,
-                4,
-            ),
-            self._step(
-                "Model EHG grants by household type",
-                "Fit the required regression models, report each equation and R2, and document how the categorical household-type variable is encoded or grouped.",
-                4,
-                5,
-            ),
-            self._step(
-                "Calculate MAE and RMSE for each EHG model",
-                "Use Number of EHGs granted as y, compare predictions with observed values, and prepare a compact metrics table.",
-                3,
-                4,
-            ),
-            self._step(
-                "Interpret EHG success patterns across household types",
-                "Compare model fit and grant patterns, then discuss which household types appear more or less successful and what the limits of the data are.",
-                2,
-                4,
-            ),
-            self._step(
-                "Run normality checks and ethnic-group mean comparisons",
-                "Check 18 monthly application counts by ethnicity, compare Maori and Asian means with European, then run an all-group test such as ANOVA or a non-parametric alternative.",
-                4,
-                5,
-            ),
-            self._step(
-                "Build Part B conceptual model and external-data plan",
-                "Hypothesize factors affecting EHG grant success, add two plausible external data series, and specify source, geography, and collection frequency.",
-                3,
-                4,
-            ),
-            self._step(
-                "Assemble final report with tables, findings, and limitations",
-                "Use tables for statistics and model metrics, explain test choices, answer each sub-question directly, and flag ambiguous assumptions.",
-                3,
-                5,
-            ),
-        ]
-
     def _detect_constraints(self, goal: str, request: PlanRequest, deliverables: list[str]) -> list[str]:
         lower = goal.lower()
         constraints = []
@@ -450,10 +469,6 @@ class TaskPlanningAgent:
             constraints.append("Missing explicit deadline")
         if self._detect_input_type(goal) == "assignment_brief":
             constraints.append("Copied assignment brief detected")
-        if self._looks_like_data_analysis_assignment(lower):
-            constraints.append("Data analysis methods must match the assignment wording")
-        if "household type" in lower and "regression" in lower:
-            constraints.append("Household type is categorical, so regression needs encoding or a grouped-model assumption")
         if self._has_any(lower, ["github", "repository", "repo"]):
             constraints.append("Repository evidence required")
         if any(item in deliverables for item in ["report", "paper", "essay", "proposal"]):
@@ -518,7 +533,6 @@ class TaskPlanningAgent:
             deliverables.remove("repository")
         if not deliverables:
             defaults = {
-                "data_analysis_assignment": ["analysis report"],
                 "software_project": ["working prototype"],
                 "study_plan": ["practice results"],
                 "research_project": ["research summary"],
@@ -572,6 +586,8 @@ class TaskPlanningAgent:
     def _looks_like_assignment_brief(self, lower_goal: str) -> bool:
         if len(lower_goal) > 700:
             return True
+        if re.search(r"\bpart\s+[a-z]\s*:", lower_goal):
+            return True
         signals = [
             "assignment", "coursework", "rubric", "submission", "submit", "deliverable",
             "marking", "criteria", "marks", "grade", "deadline", "late penalty",
@@ -579,37 +595,24 @@ class TaskPlanningAgent:
         ]
         return sum(1 for signal in signals if signal in lower_goal) >= 2
 
-    def _looks_like_data_analysis_assignment(self, lower_goal: str) -> bool:
-        signals = [
-            "dataset", "mean", "median", "standard deviation", "linear regression",
-            "regression equation", "r2", "r squared", "mae", "rmse", "normality",
-            "anova", "kruskal", "t-test", "statistically significant", "social housing",
-            "emergency housing", "ehg", "household type", "ethnic groups",
-            "conceptual model", "external data", "collection strategy",
-        ]
-        return sum(1 for signal in signals if signal in lower_goal) >= 3
-
     def _extract_methods(self, goal: str) -> list[str]:
         lower = goal.lower()
         markers = [
-            ("mean", "mean"),
-            ("median", "median"),
-            ("standard deviation", "standard deviation"),
-            ("linear regression", "linear regression"),
-            ("regression equation", "regression equation"),
-            ("r2", "R2"),
-            ("r squared", "R2"),
-            ("mae", "MAE"),
-            ("rmse", "RMSE"),
-            ("normality", "normality check"),
-            ("shapiro", "normality check"),
-            ("t-test", "pairwise mean comparison"),
-            ("anova", "ANOVA"),
-            ("kruskal", "Kruskal-Wallis"),
-            ("conceptual model", "conceptual model"),
-            ("hypothesis", "hypothesis building"),
-            ("external data", "external data inputs"),
-            ("collection strategy", "data collection strategy"),
+            ("calculate", "calculation required"),
+            ("determine", "determination required"),
+            ("compare", "comparison required"),
+            ("discuss", "discussion required"),
+            ("interpret", "interpretation required"),
+            ("identify", "identification required"),
+            ("hypothesize", "hypothesis required"),
+            ("draw", "diagram or model required"),
+            ("include", "included item required"),
+            ("specify", "specification required"),
+            ("collect", "collection plan required"),
+            ("submit", "submission requirement"),
+            ("report", "reporting requirement"),
+            ("max.", "word limit or response limit"),
+            ("marks", "mark allocation"),
         ]
         methods = []
         for marker, label in markers:
@@ -619,12 +622,24 @@ class TaskPlanningAgent:
 
     def _extract_sections(self, goal: str) -> list[str]:
         sections = []
+        for match in re.finditer(r"\b(part\s+[a-z])\s*:\s*([^.\n]{0,110})", goal, flags=re.IGNORECASE):
+            heading = f"{match.group(1).title()}: {match.group(2).strip()}".strip(" .")
+            if heading not in sections:
+                sections.append(heading)
+        for match in re.finditer(r"(\([a-z]\))\s*([^.\n]{0,110})", goal, flags=re.IGNORECASE):
+            heading = f"{match.group(1)} {match.group(2).strip()}".strip(" .")
+            if heading not in sections:
+                sections.append(heading)
         for line in goal.splitlines():
-            cleaned = line.strip()
+            cleaned = line.strip(" .")
+            if len(cleaned) > 140 or len(re.findall(r"\bpart\s+[a-z]\s*:", cleaned, flags=re.IGNORECASE)) > 1:
+                continue
             if re.match(r"^part\s+[a-z]\b", cleaned, flags=re.IGNORECASE):
-                sections.append(cleaned[:120])
+                if cleaned[:120] not in sections:
+                    sections.append(cleaned[:120])
             elif re.match(r"^\(?[a-c]\)", cleaned, flags=re.IGNORECASE):
-                sections.append(cleaned[:120])
+                if cleaned[:120] not in sections:
+                    sections.append(cleaned[:120])
         return sections[:10]
 
     def _parse_date(self, value: str) -> date | None:
@@ -674,7 +689,6 @@ class TaskPlanningAgent:
         available_hours: float,
     ) -> float:
         base_hours = {
-            "data_analysis_assignment": 16.0,
             "student_assignment": 7.0,
             "software_project": 6.0,
             "study_plan": 5.0,
@@ -687,9 +701,7 @@ class TaskPlanningAgent:
             "general_goal": 4.0,
         }[domain]
         base_hours += min(3.0, len(deliverables) * 0.5)
-        if domain == "data_analysis_assignment":
-            base_hours += min(8.0, len(methods) * 0.8)
-            base_hours = max(base_hours, 18.0)
+        base_hours += min(4.0, len(methods) * 0.4)
         if input_type == "assignment_brief":
             base_hours += 1.5
         if len(goal) > 1500:
@@ -804,6 +816,15 @@ class TaskPlanningAgent:
         except (TypeError, ValueError):
             number = lower
         return max(lower, min(upper, number))
+
+    def _task_overlaps_brief(self, title: str, brief_words: set[str]) -> bool:
+        generic_words = {
+            "assignment", "brief", "requirement", "requirements", "complete", "prepare",
+            "review", "draft", "final", "submit", "submission", "part", "question",
+            "deliverable", "deliverables", "report", "analysis", "model", "data",
+        }
+        title_words = set(re.findall(r"[a-zA-Z][a-zA-Z0-9-]{3,}", title.lower()))
+        return bool((title_words & brief_words) or (title_words & generic_words))
 
     def _contains_marker(self, text: str, marker: str) -> bool:
         if re.fullmatch(r"[a-z0-9 ]+", marker):

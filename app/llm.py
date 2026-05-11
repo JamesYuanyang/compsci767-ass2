@@ -60,10 +60,10 @@ Analyze this student assignment brief or goal. Return JSON only, with no markdow
 
 Schema:
 {{
-  "domain": "student_assignment | data_analysis_assignment | software_project | study_plan | research_project | writing_project | career_goal | habit_goal | event_plan | creative_project | general_goal",
+  "domain": "student_assignment | software_project | study_plan | research_project | writing_project | career_goal | habit_goal | event_plan | creative_project | general_goal",
   "input_type": "assignment_brief | goal_description",
   "deliverables": ["short noun phrase"],
-  "methods": ["specific required method or technique"],
+  "methods": ["key requirement, technique, or required activity written in the brief"],
   "sections": ["named part or requirement"],
   "tasks": [
     {{"title": "specific task", "hint": "concrete implementation hint", "weight": 1, "risk": 1}}
@@ -73,8 +73,9 @@ Schema:
 }}
 
 Rules:
-- If the brief asks for statistics, regression, testing, metrics, datasets, or quantitative interpretation, use domain "data_analysis_assignment".
-- Extract concrete methods such as descriptive statistics, linear regression, R2, MAE, RMSE, normality check, t-test, ANOVA, Kruskal-Wallis, conceptual model, external data collection.
+- Treat pasted teacher instructions as a generic student assignment brief.
+- Extract the brief's own parts, numbered questions, deliverables, marking clues, and constraints.
+- Do not use a subject-specific template. Base task titles on the brief wording.
 - Do not include README, GitHub, or demo tasks unless the brief explicitly asks for them.
 - Produce 5 to 8 tasks. Each task title must mention the actual assignment content.
 - Weight and risk must be integers from 1 to 5.
@@ -112,7 +113,6 @@ Brief:
     def _normalize(self, data: dict[str, Any]) -> dict[str, Any]:
         allowed_domains = {
             "student_assignment",
-            "data_analysis_assignment",
             "software_project",
             "study_plan",
             "research_project",

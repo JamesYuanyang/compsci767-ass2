@@ -17,7 +17,7 @@ Working prototype.
 - English interface: keeps the main workflow readable and consistent.
 - Assignment brief input: users can paste teacher-provided requirements or type their own goal description.
 - Date deadline picker: accepts a calendar date and uses it to estimate deadline pressure.
-- Optional local LLM analysis: can use Ollama with `llama3.2:1b` to extract tasks, methods, sections, and risks from pasted briefs.
+- Optional local LLM analysis: can use Ollama with `llama3.2:1b` to extract tasks, key requirements, sections, and risks from pasted briefs without relying on subject-specific templates.
 - Rule-based fallback: if Ollama is unavailable, the app still runs and uses deterministic planning rules.
 - Decision-making: selects a planning template and assigns task order, priority, effort estimates, and schedule labels.
 - Actions: creates a plan, updates task status, and replans from user feedback.
