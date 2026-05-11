@@ -10,43 +10,48 @@
     <main class="app-shell">
       <header class="topbar">
         <div>
-          <p>COMPSCI 767 Assignment 2</p>
-          <h1>Personal Task Planning Agent</h1>
+          <p>COMPSCI 767 Assignment 2 / 课程作业 2</p>
+          <h1>Personal Task Planning Agent / 个人任务规划智能体</h1>
         </div>
         <span>Nanyuanyang Zhang - 961188227</span>
       </header>
 
       <section class="composer">
         <form id="goal-form" class="goal-form">
+          <div class="mode-tabs" aria-label="Input mode">
+            <button type="button" class="active" data-input-mode="brief">粘贴要求 / Paste Brief</button>
+            <button type="button" data-input-mode="goal">自己描述 / Describe Goal</button>
+          </div>
+
           <label class="goal-field">
-            Goal
-            <textarea id="goal" required minlength="5">Complete COMPSCI 767 assignment 2 with a GitHub repository, README, report, and demo video</textarea>
+            <span id="goal-label">作业要求或目标 / Assignment Brief or Goal</span>
+            <textarea id="goal" required minlength="5"></textarea>
           </label>
 
           <div class="input-row">
             <label>
-              Deadline
-              <input id="deadline" type="text" value="Week 11 submission" />
+              截止日期 / Deadline
+              <input id="deadline" type="date" />
             </label>
             <label>
-              Hours
+              可用小时 / Hours
               <input id="hours" type="number" min="0.5" max="80" step="0.5" value="8" />
             </label>
             <label>
-              Priority
+              优先级 / Priority
               <select id="priority">
-                <option value="medium">Medium</option>
-                <option value="high" selected>High</option>
-                <option value="low">Low</option>
+                <option value="medium">Medium / 中</option>
+                <option value="high" selected>High / 高</option>
+                <option value="low">Low / 低</option>
               </select>
             </label>
-            <button type="submit">Generate</button>
+            <button type="submit">生成计划 / Generate</button>
           </div>
         </form>
 
         <form id="feedback-form" class="feedback-form">
-          <input id="feedback" minlength="3" placeholder="Feedback, e.g. I only have 2 hours today" />
-          <button type="submit" class="secondary">Re-plan</button>
+          <input id="feedback" minlength="3" placeholder="反馈 / Feedback, e.g. I only have 2 hours today" />
+          <button type="submit" class="secondary">重新规划 / Re-plan</button>
         </form>
         <p id="status-message" class="status-message" aria-live="polite"></p>
       </section>
@@ -55,33 +60,33 @@
         <section class="plan-panel">
           <div class="plan-header">
             <div>
-              <span id="session-id">No active session</span>
-              <h2 id="goal-state">Generate a plan to start.</h2>
+              <span id="session-id">暂无会话 / No active session</span>
+              <h2 id="goal-state">生成一个计划开始 / Generate a plan to start.</h2>
             </div>
             <div class="metrics">
               <span id="time-budget">-</span>
               <span id="safety-state">-</span>
             </div>
           </div>
-          <div id="task-list" class="task-list empty">No tasks yet.</div>
+          <div id="task-list" class="task-list empty">暂无任务 / No tasks yet.</div>
         </section>
 
         <aside class="side-panel">
           <details open>
-            <summary>Recent Plans</summary>
+            <summary>历史计划 / Recent Plans</summary>
             <div class="side-actions">
-              <button id="refresh-memory" type="button" class="ghost">Refresh</button>
+              <button id="refresh-memory" type="button" class="ghost">刷新 / Refresh</button>
             </div>
             <div id="memory-list" class="memory-list"></div>
           </details>
 
           <details>
-            <summary>Agent Reasoning</summary>
+            <summary>智能体推理 / Agent Reasoning</summary>
             <ol id="agent-log" class="log-list"></ol>
           </details>
 
           <details>
-            <summary>Perception</summary>
+            <summary>感知信息 / Perception</summary>
             <dl id="perception" class="facts"></dl>
           </details>
         </aside>

@@ -2,7 +2,7 @@ from __future__ import annotations
 
 import re
 import uuid
-from datetime import datetime, timezone
+from datetime import date, datetime, timezone
 from typing import Any
 
 from app.models import FeedbackRequest, PlanRequest
@@ -114,6 +114,7 @@ class TaskPlanningAgent:
             "raw_goal": goal,
             "keywords": self._extract_keywords(goal),
             "domain": domain,
+            "input_type": self._detect_input_type(goal),
             "deliverables": deliverables,
             "deadline_detected": bool(request.deadline),
             "deadline_pressure": self._deadline_pressure(request.deadline, request.priority),
@@ -190,7 +191,7 @@ class TaskPlanningAgent:
 
     def _classify_domain(self, goal: str) -> str:
         lower = goal.lower()
-        if self._has_any(lower, ["assignment", "coursework", "course", "homework", "rubric", "submit", "compsci", "ass2", "作业", "课程", "提交"]):
+        if self._looks_like_assignment_brief(lower) or self._has_any(lower, ["assignment", "coursework", "course", "homework", "rubric", "submit", "submission", "criteria", "marks", "compsci", "ass2", "作业", "课程", "提交", "评分", "要求"]):
             return "student_assignment"
         if self._has_any(lower, ["app", "website", "api", "code", "debug", "prototype", "software", "网站", "应用", "程序", "编程", "调试"]):
             return "software_project"
@@ -214,6 +215,8 @@ class TaskPlanningAgent:
         focus = self._goal_focus(perception["raw_goal"])
         deliverables = perception["deliverables"]
         final_output = ", ".join(deliverables) if deliverables else "the final output"
+        if perception.get("input_type") == "assignment_brief":
+            focus = "copied assignment requirements"
 
         if perception["time_budget"] <= 2:
             return [
@@ -224,7 +227,7 @@ class TaskPlanningAgent:
 
         middle_steps = {
             "student_assignment": [
-                self._step("Map requirements to required evidence", "List each rubric or submission requirement and the file or screenshot that proves it.", 2, 4),
+                self._step("Extract deliverables, rubric items, and submission rules", "Turn the copied brief into a checklist of required files, marks, and evidence.", 2, 4),
                 self._step("Build the core submission artifact", "Finish the smallest version that demonstrates the required agent behaviour.", 4, 5),
                 self._step("Prepare report, README, and demo evidence", "Make reproduction steps and screenshots/video easy for a marker to verify.", 3, 4),
             ],
@@ -293,6 +296,8 @@ class TaskPlanningAgent:
             constraints.append("Very limited time budget")
         if not request.deadline:
             constraints.append("Missing explicit deadline")
+        if self._detect_input_type(goal) == "assignment_brief":
+            constraints.append("Copied assignment brief detected")
         if self._has_any(lower, ["github", "repository", "repo"]):
             constraints.append("Repository evidence required")
         if any(item in deliverables for item in ["report", "paper", "essay", "proposal"]):
@@ -327,12 +332,16 @@ class TaskPlanningAgent:
             ("github", "GitHub repository"),
             ("repository", "repository"),
             ("repo", "repository"),
+            ("source code", "source code"),
+            ("code", "code"),
             ("report", "report"),
             ("paper", "paper"),
             ("essay", "essay"),
             ("proposal", "proposal"),
             ("slides", "slides"),
             ("presentation", "presentation"),
+            ("screenshot", "screenshots"),
+            ("screenshots", "screenshots"),
             ("demo video", "demo video"),
             ("video", "video"),
             ("prototype", "prototype"),
@@ -340,6 +349,10 @@ class TaskPlanningAgent:
             ("website", "website"),
             ("resume", "resume"),
             ("portfolio", "portfolio"),
+            (".py", "Python file"),
+            (".ipynb", "notebook"),
+            (".pdf", "PDF"),
+            (".zip", "ZIP submission"),
             ("报告", "report"),
             ("论文", "paper"),
             ("演示", "demo"),
@@ -351,6 +364,8 @@ class TaskPlanningAgent:
         for marker, name in markers:
             if self._contains_marker(lower, marker) and name not in deliverables:
                 deliverables.append(name)
+        if "GitHub repository" in deliverables and "repository" in deliverables:
+            deliverables.remove("repository")
         if not deliverables:
             defaults = {
                 "software_project": ["working prototype"],
@@ -365,7 +380,7 @@ class TaskPlanningAgent:
                 "general_goal": ["visible outcome"],
             }
             deliverables = defaults[domain]
-        return deliverables[:4]
+        return deliverables[:6]
 
     def _estimate_complexity(self, goal: str, available_hours: float, deliverables: list[str]) -> str:
         signals = len(deliverables) + len(re.findall(r"\b(and|with|plus|including)\b", goal.lower()))
@@ -381,6 +396,14 @@ class TaskPlanningAgent:
         if not deadline:
             return "unknown"
         lower = deadline.lower()
+        parsed_date = self._parse_date(deadline)
+        if parsed_date:
+            days_left = (parsed_date - date.today()).days
+            if days_left <= 1:
+                return "urgent"
+            if days_left <= 7:
+                return "soon"
+            return "normal"
         if self._has_any(lower, ["today", "tonight", "asap", "urgent", "今天", "今晚", "马上"]):
             return "urgent"
         if self._has_any(lower, ["tomorrow", "this week", "week 11", "明天", "本周"]):
@@ -388,6 +411,28 @@ class TaskPlanningAgent:
         if priority == "high":
             return "soon"
         return "normal"
+
+    def _detect_input_type(self, goal: str) -> str:
+        lower = goal.lower()
+        if len(goal) > 700 or self._looks_like_assignment_brief(lower):
+            return "assignment_brief"
+        return "goal_description"
+
+    def _looks_like_assignment_brief(self, lower_goal: str) -> bool:
+        if len(lower_goal) > 700:
+            return True
+        signals = [
+            "assignment", "coursework", "rubric", "submission", "submit", "deliverable",
+            "marking", "criteria", "marks", "grade", "deadline", "late penalty",
+            "requirements", "learning outcome", "作业", "要求", "提交", "评分", "截止",
+        ]
+        return sum(1 for signal in signals if signal in lower_goal) >= 2
+
+    def _parse_date(self, value: str) -> date | None:
+        try:
+            return date.fromisoformat(value.strip())
+        except ValueError:
+            return None
 
     def _allocate_effort(self, time_budget: float, weights: list[int]) -> list[float]:
         total_tenths = max(5, int(round(time_budget * 10)))

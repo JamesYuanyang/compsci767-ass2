@@ -14,6 +14,9 @@ Working prototype.
 ## Agent Capabilities
 
 - Perception: parses the user's goal, deadline, available hours, urgency, keywords, and constraints.
+- Bilingual interface: supports Chinese and English labels for the main workflow.
+- Assignment brief input: users can paste teacher-provided requirements or type their own goal description.
+- Date deadline picker: accepts a calendar date and uses it to estimate deadline pressure.
 - Decision-making: selects a planning template and assigns task order, priority, effort estimates, and schedule labels.
 - Actions: creates a plan, updates task status, and replans from user feedback.
 - Memory: stores previous planning sessions and feedback in `data/memory.json`.
@@ -67,8 +70,8 @@ http://127.0.0.1:8000
 
 ### 5. Try the agent
 
-1. Enter a personal or study goal.
-2. Add a deadline, available hours, and priority.
+1. Paste assignment requirements or enter a personal/study goal.
+2. Choose a deadline date, available hours, and priority.
 3. Click `Generate Plan`.
 4. Change task statuses using `Todo`, `Doing`, `Done`, or `Blocked`.
 5. Add feedback such as `I only have 2 hours today` and click `Re-plan From Feedback`.
