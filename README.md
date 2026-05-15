@@ -6,7 +6,7 @@ Student ID: 961188227
 
 GitHub repository: https://github.com/JamesYuanyang/compsci767-ass2
 
-Demo video: [add link here]
+Demo video: https://youtu.be/SqmoX3l20oQ
 
 ## Short Description
 
