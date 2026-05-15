@@ -254,13 +254,6 @@ GitHub repo should include README.md with reproduction instructions, a 2-minute 
 }
 ```
 
-## Screenshots
-
-Add final screenshots before submission:
-
-1. Initial plan generation from the assignment brief.
-2. Feedback update after entering a message such as "I only have 2 hours today".
-3. Agent Trace, Memory, Safety Check, and Progress panels.
 
 ## Commit Checkpoint Suggestions
 
