@@ -51,7 +51,7 @@
 
         <form id="feedback-form" class="feedback-form">
           <input id="feedback" minlength="3" placeholder="Feedback, e.g. I only have 2 hours today" />
-          <button type="submit" class="secondary">Re-plan</button>
+          <button type="submit" class="secondary">Apply Feedback</button>
         </form>
         <p id="status-message" class="status-message" aria-live="polite"></p>
       </section>
@@ -66,10 +66,55 @@
             <div class="metrics">
               <span id="time-budget">-</span>
               <span id="safety-state">-</span>
+              <button id="rest-button" type="button" class="ghost compact" hidden>Pause / Rest</button>
             </div>
           </div>
           <div id="safety-list" class="safety-list"></div>
+          <div id="progress-panel" class="progress-panel" hidden>
+            <div class="progress-row">
+              <strong id="progress-text">Progress: 0 / 0 tasks completed</strong>
+              <span id="remaining-time">Remaining planned time: 0h</span>
+              <span id="completed-time">Completed time: 0h</span>
+            </div>
+            <div class="progress-track" aria-hidden="true">
+              <span id="progress-bar"></span>
+            </div>
+          </div>
           <div id="task-list" class="task-list empty">No tasks yet.</div>
+        </section>
+
+        <section id="focus-panel" class="focus-panel" hidden>
+          <div class="focus-header">
+            <div>
+              <span id="focus-session">Focus Mode</span>
+              <h2 id="focus-title">No active task</h2>
+            </div>
+            <button id="focus-back" type="button" class="ghost">Back to Plan</button>
+          </div>
+          <div class="focus-body">
+            <div class="timer-block">
+              <span id="focus-state">Ready</span>
+              <strong id="focus-timer">00:00:00</strong>
+            <div class="focus-actions">
+              <button id="focus-done" type="button">Done</button>
+              <button id="focus-resume" type="button" class="secondary" hidden>Resume Timer</button>
+              <button id="focus-pause" type="button" class="secondary">Pause / Rest</button>
+            </div>
+            </div>
+            <aside class="focus-work">
+              <h3>Current Work</h3>
+              <p id="focus-hint"></p>
+              <dl class="focus-facts">
+                <dt>Planned time</dt>
+                <dd id="focus-planned">-</dd>
+                <dt>Priority</dt>
+                <dd id="focus-priority">-</dd>
+                <dt>Schedule</dt>
+                <dd id="focus-schedule">-</dd>
+              </dl>
+              <p id="focus-note" class="muted"></p>
+            </aside>
+          </div>
         </section>
 
         <aside class="side-panel">
@@ -78,12 +123,13 @@
             <div class="side-actions">
               <button id="refresh-memory" type="button" class="ghost">Refresh</button>
             </div>
+            <div id="memory-summary" class="memory-summary"></div>
             <div id="memory-list" class="memory-list"></div>
           </details>
 
           <details>
-            <summary>Agent Reasoning</summary>
-            <ol id="agent-log" class="log-list"></ol>
+            <summary>Agent Trace</summary>
+            <div id="agent-trace" class="trace-list"></div>
           </details>
 
           <details>

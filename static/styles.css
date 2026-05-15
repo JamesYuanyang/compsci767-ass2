@@ -56,6 +56,12 @@ button.ghost {
   color: #263640;
 }
 
+button.compact {
+  min-height: 30px;
+  padding: 0 10px;
+  font-size: 12px;
+}
+
 input,
 select,
 textarea {
@@ -240,6 +246,105 @@ label {
   gap: 10px;
 }
 
+.focus-panel {
+  min-width: 0;
+  padding: 18px;
+  background: var(--panel);
+  border: 1px solid var(--line);
+  border-radius: 8px;
+}
+
+.focus-header {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 18px;
+  margin-bottom: 18px;
+}
+
+.focus-header span,
+.focus-work .muted {
+  color: var(--muted);
+  font-size: 13px;
+}
+
+.focus-header h2 {
+  margin: 4px 0 0;
+  font-size: 22px;
+  line-height: 1.25;
+  letter-spacing: 0;
+}
+
+.focus-body {
+  display: grid;
+  grid-template-columns: minmax(250px, 0.85fr) minmax(0, 1.15fr);
+  gap: 16px;
+}
+
+.timer-block,
+.focus-work {
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  background: #f8fafb;
+  padding: 16px;
+}
+
+.timer-block {
+  display: grid;
+  align-content: center;
+  gap: 12px;
+  min-height: 230px;
+}
+
+.timer-block span {
+  color: var(--muted);
+  font-size: 13px;
+  font-weight: 700;
+}
+
+#focus-timer {
+  color: #102229;
+  font-size: clamp(38px, 8vw, 68px);
+  line-height: 1;
+  letter-spacing: 0;
+  font-variant-numeric: tabular-nums;
+}
+
+.focus-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 10px;
+}
+
+.focus-work h3 {
+  margin: 0 0 8px;
+  font-size: 16px;
+  line-height: 1.3;
+}
+
+.focus-work p {
+  margin: 0 0 12px;
+  color: #42535f;
+  font-size: 14px;
+  line-height: 1.5;
+}
+
+.focus-facts {
+  margin: 0 0 12px;
+  display: grid;
+  grid-template-columns: 110px 1fr;
+  gap: 8px 10px;
+  font-size: 13px;
+}
+
+.focus-facts dt {
+  color: var(--muted);
+}
+
+.focus-facts dd {
+  margin: 0;
+}
+
 .safety-list {
   margin-bottom: 14px;
 }
@@ -256,6 +361,12 @@ label {
   padding: 12px;
 }
 
+.safety-list.ok {
+  border-color: #c8dfd5;
+  background: #f3faf7;
+  color: #1d5139;
+}
+
 .safety-list strong {
   display: block;
   margin-bottom: 6px;
@@ -269,6 +380,48 @@ label {
   gap: 5px;
   font-size: 13px;
   line-height: 1.4;
+}
+
+.progress-panel {
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  background: #f8fafb;
+  padding: 12px;
+  margin-bottom: 14px;
+}
+
+.progress-row {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 10px 16px;
+  color: #2c3d47;
+  font-size: 13px;
+}
+
+.progress-row strong {
+  font-size: 13px;
+}
+
+.progress-row span {
+  color: var(--muted);
+}
+
+.progress-track {
+  height: 8px;
+  margin-top: 10px;
+  overflow: hidden;
+  border-radius: 999px;
+  background: #e4ebef;
+}
+
+.progress-track span {
+  display: block;
+  width: 0;
+  height: 100%;
+  border-radius: inherit;
+  background: var(--accent);
+  transition: width 160ms ease;
 }
 
 .task-list.empty {
@@ -295,6 +448,11 @@ label {
 
 .task-card.blocked {
   border-left-color: var(--danger);
+}
+
+.task-card.deferred {
+  border-left-color: #8d99a3;
+  background: #f8fafb;
 }
 
 .task-main {
@@ -357,6 +515,29 @@ label {
   color: #fff;
 }
 
+.status-select-label {
+  align-self: start;
+  min-width: 132px;
+  gap: 5px;
+  font-size: 12px;
+}
+
+.status-select {
+  min-height: 34px;
+  padding: 6px 8px;
+  border-radius: 7px;
+  font-size: 13px;
+}
+
+.open-timer {
+  min-height: 30px;
+  padding: 0 9px;
+  border-radius: 7px;
+  background: #2f4550;
+  color: #fff;
+  font-size: 12px;
+}
+
 .side-panel {
   display: grid;
   gap: 12px;
@@ -374,6 +555,15 @@ label {
 
 .side-actions {
   margin: 12px 0;
+}
+
+.memory-summary {
+  display: grid;
+  gap: 4px;
+  margin-bottom: 10px;
+  color: var(--muted);
+  font-size: 12px;
+  line-height: 1.35;
 }
 
 .memory-list {
@@ -420,6 +610,29 @@ label {
   line-height: 1.45;
 }
 
+.trace-list {
+  display: grid;
+  gap: 12px;
+  margin-top: 12px;
+}
+
+.trace-section h3 {
+  margin: 0 0 6px;
+  color: #263640;
+  font-size: 13px;
+  line-height: 1.3;
+}
+
+.trace-section ul {
+  margin: 0;
+  padding-left: 18px;
+  display: grid;
+  gap: 5px;
+  color: #344550;
+  font-size: 13px;
+  line-height: 1.4;
+}
+
 .facts {
   margin: 12px 0 0;
   display: grid;
@@ -449,12 +662,21 @@ label {
 
   .workspace,
   .input-row,
-  .feedback-form {
+  .feedback-form,
+  .focus-body {
     grid-template-columns: 1fr;
+  }
+
+  .focus-header {
+    display: grid;
   }
 
   .task-card {
     grid-template-columns: 1fr;
+  }
+
+  .status-select-label {
+    width: min(180px, 100%);
   }
 
   .status-tabs {
